@@ -42,9 +42,9 @@ class _MyHomePageState extends State<MyHomePage> {
     'Клиенты': 'Customer',
     'Сотрудники': 'staff',
     'Взаимодействия': 'interaction',
-    'Работы': 'work',
+    'Действия': 'work',
     'Услуги': 'service',
-    'Бронирование': 'booking',
+    'Заказы': 'booking',
     'Запчасти': 'spare_part',
     'Автомобили': 'car',
     'Марки автомобилей': 'brand_car'
@@ -53,14 +53,59 @@ class _MyHomePageState extends State<MyHomePage> {
   // Маппинг русских и английских названий атрибутов
   final Map<String, Map<String, String>> attributeNames = {
     'Customer': {
-      'lfp_customer': 'Имя',
+      'lfp_customer': 'ФИО клиента',
       'address': 'Адрес',
       'phone_customer': 'Телефон',
     },
+    'booking': {
+      'id_booking': 'Номер заказа',
+      'lfp_customer': 'ФИО клиента',
+      'vin_number_car': 'ВИН номер ТС',
+      'date_application_booking': 'Дата обращения',
+      'date_finish_booking': 'Дата завершения ремонта',
+      'date_car_accept_booking': 'Дата приема ТС',
+      'date_start_repair_booking': 'Дата приема ТС',
+      'status_booking': 'Статус заказа',
+      'service': 'Услуга',
+      'staff': 'Исполнитель',
+    },
+    'work': {
+      'name_work': 'Название действия',
+    },
+    'interaction': {
+      'id_booking': 'Номер заказа',
+      'name_work': 'Название действия',
+      'date_time_interaction': 'Дата',
+      'service': 'Услуга',
+      'staff': 'Исполнитель',
+    },
+    'service': {
+      'id_service': 'Католожный номер услуги',
+      'name_service': 'Название услуги',
+      'price_service': 'Цена услуги',
+      'coutn_hour_service': 'Норма часы',
+    },
     'staff': {
-      'id_staff': 'ID сотрудника',
-      'name': 'Имя',
-      'position': 'Должность',
+      'lfp_staff': 'Имя',
+      'post_staff': 'Должность',
+    },
+    'spare_part': {
+      'id_booking': 'Номер заказа',
+      'name_spare_part': 'Название запчасти',
+      'number_spare_part': 'Артикул запчасти',
+      'price_spare_part': 'Цена запчасти',
+    },
+    'brand_car': {
+      'name_brand_car': 'Марка',
+      'name_model_brand_car': 'Модель',
+    },
+    'car': {
+      'vin_number_car': 'ВИН номер',
+      'color_car': 'Цвет',
+      'state_number_car': 'Рег. номер',
+      'price_spare_part': 'Цена запчасти',
+      'name_brand_car': 'Марка',
+      'name_model_brand_car': 'Модель',
     },
     // Добавьте маппинг для других таблиц
   };
@@ -68,8 +113,12 @@ class _MyHomePageState extends State<MyHomePage> {
   // Маппинг исключаемых атрибутов
   final Map<String, List<String>> excludedAttributes = {
     'Customer': ['id_customer'], // Пример: исключить ID клиента
-    'staff': ['id_staff'],       // Пример: исключить ID сотрудника
-    // Добавьте исключаемые атрибуты для других таблиц
+    'staff': ['id_staff', 'login', 'password'],       // Пример: исключить ID сотрудника
+    'booking': ['id_customer'],       // Пример: исключить ID сотрудника
+    'spare_part': ['id_spare_part'],       // исключить ID запчасти
+    'brand_car': ['id_model_brand_car'],       // исключить ID запчасти
+    'car': ['id_model_brand_car'],       // исключить ID запчасти
+    'interaction': ['id_interaction','id_service','id_staff'],       // исключить ID запчасти
   };
 
   Map<String, String> primaryKeyMap = {
@@ -292,35 +341,41 @@ class _MyHomePageState extends State<MyHomePage> {
 
 
 
-  void _showEditDialog(BuildContext context, Map<String, dynamic> rowData,
-      String tableName) {
+  void _showEditDialog(BuildContext context, Map<String, dynamic> rowData, String tableName) {
     final textControllers = <String, TextEditingController>{};
     rowData.forEach((key, value) {
       textControllers[key] = TextEditingController(text: value.toString());
     });
 
     // Получение имени первичного ключа для текущей таблицы
-    String? primaryKeyName = primaryKeyMap[tableName
-        .toLowerCase()]; // Учтите регистр
+    String? primaryKeyName = primaryKeyMap[tableName];
 
     if (primaryKeyName == null) {
       print("Primary key for table $tableName is not defined.");
       return;
     }
 
+    // Получение русских названий столбцов
+    var russianColumnNames = rowData.keys.map((column) {
+      return attributeNames[tableName]?[column] ?? column;
+    }).toList();
+
     showDialog(
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
-          title: Text("Редактировать Значение"),
+          title: Text("Редактировать Значение в ${tableNames.keys.firstWhere((k) => tableNames[k] == tableName, orElse: () => tableName)}"),
           content: SingleChildScrollView(
             child: ListBody(
-              children: rowData.entries.map((entry) {
+              children: List.generate(rowData.length, (index) {
+                String columnName = rowData.keys.elementAt(index);
                 return TextField(
-                  controller: textControllers[entry.key],
-                  decoration: InputDecoration(labelText: entry.key),
+                  controller: textControllers[columnName],
+                  decoration: InputDecoration(
+                    labelText: russianColumnNames[index], // Используем русское название столбца как метку
+                  ),
                 );
-              }).toList(),
+              }),
             ),
           ),
           actions: <Widget>[
@@ -352,22 +407,16 @@ class _MyHomePageState extends State<MyHomePage> {
                     updateValues[key] = value.text;
                   });
 
-                  String setString = updateValues.entries.map((
-                      entry) => "${entry.key} = @${entry.key}").join(", ");
+                  String setString = updateValues.entries.map((entry) => "${entry.key} = @${entry.key}").join(", ");
                   String updateSQL = "UPDATE $tableName SET $setString WHERE $primaryKeyName = @primaryKeyValue";
-                  updateValues['primaryKeyValue'] =
-                      rowData[primaryKeyName].toString();
+                  updateValues['primaryKeyValue'] = rowData[primaryKeyName].toString();
 
-                  await connection!.execute(
-                      updateSQL, substitutionValues: updateValues);
+                  await connection!.execute(updateSQL, substitutionValues: updateValues);
                   Navigator.of(context).pushAndRemoveUntil(
                     MaterialPageRoute(builder: (context) => MyHomePage()),
                         (Route<dynamic> route) => false,
                   );
 
-
-                  // Navigator.of(context).pop();
-                  // Обновить данные
                 } catch (e) {
                   print("Error updating data: $e");
                 }
@@ -379,7 +428,12 @@ class _MyHomePageState extends State<MyHomePage> {
     );
   }
 
+
   void _showAddDialog(BuildContext context, List<String> columnNames) {
+    // Удаление системных полей которые мы НЕ будем вводить
+    currentTable == 'interaction' ? columnNames.remove('date_time_interaction') :
+    currentTable == 'booking' ? {columnNames.remove('id_booking'), columnNames.remove('date_application_booking'), columnNames.remove('date_finish_booking'), columnNames.remove('status_booking'), columnNames.remove('date_car_accept_booking'), columnNames.remove('date_start_repair_booking')} : null;
+
     // Создаем контроллеры для текстовых полей каждого столбца
     final textControllers = Map.fromIterable(
       columnNames,
@@ -388,21 +442,27 @@ class _MyHomePageState extends State<MyHomePage> {
       value: (columnName) => TextEditingController(),
     );
 
+    // Получение русских названий столбцов
+    var russianColumnNames = columnNames.map((column) {
+      return attributeNames[currentTable]?[column] ?? column;
+    }).toList();
+
     showDialog(
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
-          title: Text("Добавить запись в $currentTable"),
+          title: Text("Добавить запись в ${tableNames.keys.firstWhere((k) => tableNames[k] == currentTable, orElse: () => currentTable)}"),
           content: SingleChildScrollView(
             child: ListBody(
-              children: textControllers.keys.map((columnName) {
+              children: List.generate(columnNames.length, (index) {
+                String columnName = columnNames[index];
                 return TextField(
                   controller: textControllers[columnName],
                   decoration: InputDecoration(
-                    labelText: columnName, // Название столбца используется как метка
+                    labelText: russianColumnNames[index], // Используем русское название столбца как метку
                   ),
                 );
-              }).toList(),
+              }),
             ),
           ),
           actions: <Widget>[
@@ -418,8 +478,7 @@ class _MyHomePageState extends State<MyHomePage> {
                 // Создайте Map для данных новой записи
                 Map<String, dynamic> newData = {};
                 textControllers.forEach((columnName, controller) {
-                  newData[columnName] =
-                      controller.text; // Получение данных из текстовых полей
+                  newData[columnName] = controller.text; // Получение данных из текстовых полей
                 });
 
                 // Выполните запрос на добавление данных
@@ -435,14 +494,17 @@ class _MyHomePageState extends State<MyHomePage> {
 
                   // SQL запрос на вставку
                   String insertSQL = "INSERT INTO $currentTable ($columns) VALUES ($values)";
+                  currentTable == 'car' ? insertSQL = "SELECT insert_car($values)" :
+                  currentTable == 'interaction' ? insertSQL = "SELECT insert_interactions($values)" :
+                  currentTable == 'booking' ? insertSQL = "SELECT insert_booking($values)" : null;
+                  print(values);
 
                   // Выполнение запроса с подстановкой значений
                   await connection!.execute(insertSQL, substitutionValues: substitutionValues);
 
                   Navigator.of(context).pushAndRemoveUntil(
                     MaterialPageRoute(builder: (context) => MyHomePage()),
-                        (Route<
-                        dynamic> route) => false,
+                        (Route<dynamic> route) => false,
                   );
                 } catch (e) {
                   // Обработка возможных ошибок при добавлении данных
@@ -455,6 +517,7 @@ class _MyHomePageState extends State<MyHomePage> {
       },
     );
   }
+
 
   void _showCreateBookingInteractionDialog(BuildContext context) {
     // Контроллеры для текстовых полей
