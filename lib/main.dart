@@ -67,7 +67,11 @@ class _MyHomePageState extends State<MyHomePage> {
       'date_start_repair_booking': 'Дата приема ТС',
       'status_booking': 'Статус заказа',
       'service': 'Услуга',
+      'name_service': 'Услуга',
+      'price_service': 'Цена услуги',
       'staff': 'Исполнитель',
+      'name_spare_part': 'Название запчасти',
+      'price_spare_part': 'Цена запчасти',
     },
     'work': {
       'name_work': 'Название действия',
@@ -606,18 +610,18 @@ class _MyHomePageState extends State<MyHomePage> {
     if (reportIndex == 0 || reportIndex == 1) {
       inputFields.add(TextField(
         controller: idBookingController,
-        decoration: InputDecoration(labelText: 'ID Booking'),
+        decoration: InputDecoration(labelText: 'ID Заказа'),
         keyboardType: TextInputType.number,
       ));
     } else if (reportIndex == 2) {
       inputFields.add(TextField(
         controller: yearController,
-        decoration: InputDecoration(labelText: 'Year'),
+        decoration: InputDecoration(labelText: 'Год'),
         keyboardType: TextInputType.number,
       ));
       inputFields.add(TextField(
         controller: monthController,
-        decoration: InputDecoration(labelText: 'Month'),
+        decoration: InputDecoration(labelText: 'Месяц'),
         keyboardType: TextInputType.number,
       ));
     }
@@ -659,7 +663,7 @@ class _MyHomePageState extends State<MyHomePage> {
                     break;
                   case 2:
                   // Запрос для третьего отчета
-                    sqlQuery = "SELECT * FROM booking b "
+                    sqlQuery = "SELECT b.id_booking, b.vin_number_car, b.date_application_booking, b.date_finish_booking, b.status_booking, b.date_car_accept_booking, b.date_start_repair_booking, c.lfp_customer FROM booking b JOIN customer c ON b.id_customer = c.id_customer "
                         "WHERE EXTRACT(YEAR FROM b.date_application_booking) = ${yearController.text} "
                         "AND EXTRACT(MONTH FROM b.date_application_booking) = ${monthController.text};";
                     break;
@@ -671,6 +675,17 @@ class _MyHomePageState extends State<MyHomePage> {
                   var columnNames = results.columnDescriptions
                       .map((col) => col.columnName)
                       .toList();
+
+                  // Перевод названий столбцов
+                  String englishTableName = 'booking'; // Определите английское название таблицы
+                  var translatedColumnNames = columnNames.map((column) {
+                    return attributeNames[englishTableName]?[column] ?? column;
+                  }).toList();
+
+                  // Замена значений null на "-"
+                  var dataRows = results.map((row) {
+                    return row.map((cell) => cell?.toString() ?? "-").toList();
+                  }).toList();
 
                   // Закрытие текущего диалогового окна
                   Navigator.of(context).pop();
@@ -690,19 +705,19 @@ class _MyHomePageState extends State<MyHomePage> {
                           crossAxisAlignment: pw.CrossAxisAlignment.start,
                           children: [
                             pw.Text(
-                              'ООО Крутой Игорь\nИГРН: 120\nУл. колотушкина',
+                              'ООО Надеж сервис\nОГРН: 1234800005274\n398902, Липецкая область, г Липецк, ул Ударников, д. 90/1, офис 27',
                               style: pw.TextStyle(font: ttf, fontSize: 18, fontWeight: pw.FontWeight.bold),
                             ),
                             pw.SizedBox(height: 20),
                             pw.Table.fromTextArray(
-                              headers: columnNames,
-                              data: results.map((row) => row.map((cell) => cell.toString()).toList()).toList(),
+                              headers: translatedColumnNames,
+                              data: dataRows,
                               headerStyle: pw.TextStyle(font: ttf, fontWeight: pw.FontWeight.bold),
                               cellStyle: pw.TextStyle(font: ttf),
                             ),
                             pw.SizedBox(height: 20),
                             pw.Text(
-                              'Дата создания отчета: ${DateTime.now()}',
+                              'Дата создания отчета: ${DateTime.now()}\nОтветственный _____________________  Давыдов А.Р',
                               style: pw.TextStyle(font: ttf, fontSize: 12, fontWeight: pw.FontWeight.bold),
                             ),
                           ],

@@ -33,12 +33,12 @@ class _LoginPageState extends State<LoginPage> {
         widget.onLoginSuccess();
       } else {
         setState(() {
-          _errorMessage = 'Invalid login or password';
+          _errorMessage = 'Неверный логин или пароль';
         });
       }
     } catch (e) {
       setState(() {
-        _errorMessage = 'Error during authentication: $e';
+        _errorMessage = 'Ошибка авторизации: $e';
       });
     }
   }
@@ -47,7 +47,7 @@ class _LoginPageState extends State<LoginPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Login'),
+        title: Text('Авторизация'),
       ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
@@ -55,11 +55,11 @@ class _LoginPageState extends State<LoginPage> {
           children: [
             TextField(
               controller: _loginController,
-              decoration: InputDecoration(labelText: 'Login'),
+              decoration: InputDecoration(labelText: 'Логин'),
             ),
             TextField(
               controller: _passwordController,
-              decoration: InputDecoration(labelText: 'Password'),
+              decoration: InputDecoration(labelText: 'Пароль'),
               obscureText: true,
             ),
             if (_errorMessage != null)
@@ -73,7 +73,7 @@ class _LoginPageState extends State<LoginPage> {
             SizedBox(height: 20),
             ElevatedButton(
               onPressed: _authenticate,
-              child: Text('Login'),
+              child: Text('Войти'),
             ),
           ],
         ),
