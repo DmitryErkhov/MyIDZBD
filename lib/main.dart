@@ -1,8 +1,10 @@
 import 'dart:convert';
+import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:postgres/postgres.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'table_bloc.dart'; // Убедитесь, что вы создали BLoC, события и состояния
 import './loginpage.dart'; // Подключите файл с экрана авторизации
 import 'package:pdf/widgets.dart' as pw;
@@ -23,7 +25,7 @@ class MyApp extends StatelessWidget {
       theme: ThemeData(
         primarySwatch: Colors.blue,
       ),
-      home: MyHomePage(),
+      home: LoginPage(),
     );
   }
 }
@@ -34,8 +36,8 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
+  String? _postStaff;
   PostgreSQLConnection? connection;
-  bool _isAuthenticated = false;
 
   // Маппинг русских и английских названий таблиц
   final Map<String, String> tableNames = {
@@ -92,6 +94,8 @@ class _MyHomePageState extends State<MyHomePage> {
     'staff': {
       'lfp_staff': 'Имя',
       'post_staff': 'Должность',
+      'login': 'Логин для входа',
+      'password': 'Пароль для входа',
     },
     'spare_part': {
       'id_booking': 'Номер заказа',
@@ -117,12 +121,12 @@ class _MyHomePageState extends State<MyHomePage> {
   // Маппинг исключаемых атрибутов
   final Map<String, List<String>> excludedAttributes = {
     'Customer': ['id_customer'], // Пример: исключить ID клиента
-    'staff': ['id_staff', 'login', 'password'],       // Пример: исключить ID сотрудника
-    'booking': ['id_customer'],       // Пример: исключить ID сотрудника
-    'spare_part': ['id_spare_part'],       // исключить ID запчасти
-    'brand_car': ['id_model_brand_car'],       // исключить ID запчасти
-    'car': ['id_model_brand_car'],       // исключить ID запчасти
-    'interaction': ['id_interaction','id_service','id_staff'],       // исключить ID запчасти
+    'staff': ['id_staff', 'login', 'password'], // Пример: исключить ID сотрудника
+    'booking': ['id_customer'], // Пример: исключить ID сотрудника
+    'spare_part': ['id_spare_part'], // исключить ID запчасти
+    'brand_car': ['id_model_brand_car'], // исключить ID запчасти
+    'car': ['id_model_brand_car'], // исключить ID запчасти
+    'interaction': ['id_interaction', 'id_service', 'id_staff'], // исключить ID запчасти
   };
 
   Map<String, String> primaryKeyMap = {
@@ -146,10 +150,39 @@ class _MyHomePageState extends State<MyHomePage> {
 
   String currentTable = 'Customer';
 
+  // Маппинг должностей к доступным таблицам
+  final Map<String, List<String>> accessControl = {
+    'Механик': ['interaction', 'work', 'service', 'booking', 'spare_part'],
+    'Менеджер': [
+      'Customer',
+      'staff',
+      'interaction',
+      'work',
+      'service',
+      'booking',
+      'spare_part',
+      'car',
+      'brand_car'
+    ],
+    'Директор': [
+      'Customer',
+      'staff',
+      'interaction',
+      'work',
+      'service',
+      'booking',
+      'spare_part',
+      'car',
+      'brand_car'
+    ],
+    // для других должностей
+  };
+
   @override
   void initState() {
     super.initState();
     loadConfigAndConnect();
+    _loadPostStaff();
   }
 
   Future<void> loadConfigAndConnect() async {
@@ -175,15 +208,20 @@ class _MyHomePageState extends State<MyHomePage> {
     return json.decode(configString) as Map<String, dynamic>;
   }
 
+  Future<void> _loadPostStaff() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _postStaff = prefs.getString('post_staff');
+
+      // Удаляем доступа к таблицам и отчетам
+      _postStaff == 'Механик' ?
+      {tableNames.remove('Клиенты'), tableNames.remove('Автомобили'), tableNames.remove('Марки автомобилей'), report.remove('Отчет по ремонтам за месяц ')} : null;
+    });
+  }
+
   void fetchDataFromTable(BuildContext context, String tableName) {
     String englishTableName = tableNames[tableName] ?? tableName;
     BlocProvider.of<TableBloc>(context).add(LoadTableData(englishTableName));
-  }
-
-  void _onLoginSuccess() {
-    setState(() {
-      _isAuthenticated = true;
-    });
   }
 
   @override
@@ -199,14 +237,10 @@ class _MyHomePageState extends State<MyHomePage> {
       );
     }
 
-    if (!_isAuthenticated) {
-      return LoginPage(connection: connection!, onLoginSuccess: _onLoginSuccess);
-    }
-
     return BlocProvider<TableBloc>(
       create: (context) => TableBloc(databaseConnection: connection!),
-      child: Builder( // Создание нового контекста под BlocProvider
-        builder: (newContext) { // Используйте newContext для доступа к BlocProvider
+      child: Builder(
+        builder: (newContext) {
           return Scaffold(
             appBar: AppBar(
               title: Text('D9'),
@@ -218,58 +252,65 @@ class _MyHomePageState extends State<MyHomePage> {
                   SizedBox(
                     height: 80,
                     child: ListView.builder(
-                        scrollDirection: Axis.horizontal,
-                        itemCount: tableNames.keys.length,
-                        padding: const EdgeInsets.all(8),
-                        itemBuilder: (BuildContext context, int index) {
-                          String tableName = tableNames.keys.elementAt(index);
-                          return Padding(
-                            padding: const EdgeInsets.all(8.0),
-                            child: ElevatedButton(
-                              onPressed: () {
-                                fetchDataFromTable(newContext, tableName);
-                                currentTable = tableNames[tableName]!;
-                              },
-                              child: Text(tableName),
-                            ),
-                          );
-                        }
+                      scrollDirection: Axis.horizontal,
+                      itemCount: tableNames.keys.length,
+                      padding: const EdgeInsets.all(8),
+                      itemBuilder: (BuildContext context, int index) {
+                        String tableName = tableNames.keys.elementAt(index);
+                        return Padding(
+                          padding: const EdgeInsets.all(8.0),
+                          child: ElevatedButton(
+                            onPressed: () {
+                              fetchDataFromTable(newContext, tableName);
+                              currentTable = tableNames[tableName]!;
+                            },
+                            child: Text(tableName),
+                          ),
+                        );
+                      },
                     ),
                   ),
                   Text('Отчеты'),
                   SizedBox(
                     height: 80,
                     child: ListView.builder(
-                        scrollDirection: Axis.horizontal,
-                        itemCount: report.length,
-                        padding: const EdgeInsets.all(8),
-                        itemBuilder: (BuildContext context, int index) {
-                          return Padding(
-                            padding: const EdgeInsets.all(8.0),
-                            child: ElevatedButton(
-                                onPressed: () {
-                                  _showReportDialog(context, index);
-                                }, child: Text(report[index])),
-                          );
-                        }
+                      scrollDirection: Axis.horizontal,
+                      itemCount: report.length,
+                      padding: const EdgeInsets.all(8),
+                      itemBuilder: (BuildContext context, int index) {
+                        return Padding(
+                          padding: const EdgeInsets.all(8.0),
+                          child: ElevatedButton(
+                            onPressed: () {
+                              _showReportDialog(context, index);
+                            },
+                            child: Text(report[index]),
+                          ),
+                        );
+                      },
                     ),
                   ),
                   Text('Хранимые процедуры'),
                   SizedBox(
                     height: 80,
                     child: ListView.builder(
-                        scrollDirection: Axis.horizontal,
-                        itemCount: procedure.length,
-                        padding: const EdgeInsets.all(8),
-                        itemBuilder: (BuildContext context, int index) {
-                          return Padding(
-                            padding: const EdgeInsets.all(8.0),
-                            child: ElevatedButton(onPressed: () {
-                              _showCreateBookingInteractionDialog(context);
+                      scrollDirection: Axis.horizontal,
+                      itemCount: procedure.length,
+                      padding: const EdgeInsets.all(8),
+                      itemBuilder: (BuildContext context, int index) {
+                        return Padding(
+                          padding: const EdgeInsets.all(8.0),
+                          child: ElevatedButton(
+                            onPressed: () {
+
+                              _showCreatePurchaseDialog(context);
+
+                              // _showCreateBookingInteractionDialog(context);
                             },
-                                child: Text(procedure[index])),
-                          );
-                        }
+                            child: Text(procedure[index]),
+                          ),
+                        );
+                      },
                     ),
                   ),
                   Padding(
@@ -280,25 +321,23 @@ class _MyHomePageState extends State<MyHomePage> {
                       color: Colors.black26,
                     ),
                   ),
-
-                  // BlocBuilder для отображения данных
                   BlocBuilder<TableBloc, TableState>(
                     builder: (newContext, state) {
                       if (state is TableLoading) {
                         return CircularProgressIndicator();
                       } else if (state is TableLoaded) {
                         print(state.data);
-                        // Получаем первую строку данных для определения столбцов
-                        var columns = state.data.isNotEmpty ? state.data.first.keys.toList() : [];
-
-                        // Исключение ненужных атрибутов
+                        var columns = state.data.isNotEmpty
+                            ? state.data.first.keys.toList()
+                            : [];
                         var filteredColumns = columns.where((column) {
-                          return !(excludedAttributes[currentTable]?.contains(column) ?? false);
+                          return !(excludedAttributes[currentTable]
+                              ?.contains(column) ??
+                              false);
                         }).toList();
-
-                        // Получение русских названий атрибутов
                         var russianColumnNames = filteredColumns.map((column) {
-                          return attributeNames[currentTable]?[column] ?? column;
+                          return attributeNames[currentTable]?[column] ??
+                              column;
                         }).toList();
 
                         return Column(
@@ -306,24 +345,42 @@ class _MyHomePageState extends State<MyHomePage> {
                             SingleChildScrollView(
                               scrollDirection: Axis.horizontal,
                               child: DataTable(
-                                columns: russianColumnNames.map((column) => DataColumn(label: Text(column))).toList(),
+                                columns: russianColumnNames
+                                    .map((column) =>
+                                    DataColumn(label: Text(column)))
+                                    .toList(),
                                 rows: state.data.map((row) {
                                   return DataRow(
-                                      cells: filteredColumns.map((column) => DataCell(Text('${row[column] ?? ''}'))).toList(),
-                                      selected: true,
-                                      onLongPress: () {
-                                        _showEditDialog(context, row, currentTable);
+                                    cells: filteredColumns
+                                        .map((column) => DataCell(
+                                        Text('${row[column] ?? ''}')))
+                                        .toList(),
+                                    selected: true,
+                                    onLongPress: () {
+                                      if (accessControl[_postStaff]
+                                          ?.contains(currentTable) ??
+                                          false) {
+                                        _showEditDialog(
+                                            context, row, currentTable);
                                       }
+                                    },
                                   );
                                 }).toList(),
                               ),
                             ),
-                            ElevatedButton(
-                              onPressed: () {
-                                _showAddDialog(context, filteredColumns.map((column) => column.toString()).toList());
-                              },
-                              child: Icon(Icons.add),
-                            ),
+                            if (accessControl[_postStaff]
+                                ?.contains(currentTable) ??
+                                false)
+                              ElevatedButton(
+                                onPressed: () {
+                                  _showAddDialog(
+                                      context,
+                                      filteredColumns
+                                          .map((column) => column.toString())
+                                          .toList());
+                                },
+                                child: Icon(Icons.add),
+                              ),
                           ],
                         );
                       } else if (state is TableError) {
@@ -332,7 +389,7 @@ class _MyHomePageState extends State<MyHomePage> {
                         return Container(); // Пустое состояние или инструкции
                       }
                     },
-                  )
+                  ),
                 ],
               ),
             ),
@@ -433,10 +490,18 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
 
+  String hashPassword(String password) {
+    final bytes = utf8.encode(password); // Переводим пароль в байты
+    final digest = sha256.convert(bytes); // Хэшируем байты
+    return digest.toString(); // Возвращаем хэш в виде строки
+  }
+
   void _showAddDialog(BuildContext context, List<String> columnNames) {
     // Удаление системных полей которые мы НЕ будем вводить
     currentTable == 'interaction' ? columnNames.remove('date_time_interaction') :
-    currentTable == 'booking' ? {columnNames.remove('id_booking'), columnNames.remove('date_application_booking'), columnNames.remove('date_finish_booking'), columnNames.remove('status_booking'), columnNames.remove('date_car_accept_booking'), columnNames.remove('date_start_repair_booking')} : null;
+    currentTable == 'booking' ? {columnNames.remove('id_booking'), columnNames.remove('date_application_booking'), columnNames.remove('date_finish_booking'), columnNames.remove('status_booking'), columnNames.remove('date_car_accept_booking'), columnNames.remove('date_start_repair_booking')} :
+    currentTable == 'staff' ? {columnNames.add('login'), columnNames.add('password')}
+        : null;
 
     // Создаем контроллеры для текстовых полей каждого столбца
     final textControllers = Map.fromIterable(
@@ -463,7 +528,7 @@ class _MyHomePageState extends State<MyHomePage> {
                 return TextField(
                   controller: textControllers[columnName],
                   decoration: InputDecoration(
-                    labelText: russianColumnNames[index], // Используем русское название столбца как метку
+                    labelText: russianColumnNames[index],
                   ),
                 );
               }),
@@ -479,16 +544,12 @@ class _MyHomePageState extends State<MyHomePage> {
             ElevatedButton(
               child: Text("Сохранить"),
               onPressed: () async {
-                // Создайте Map для данных новой записи
-                Map<String, dynamic> newData = {};
-                textControllers.forEach((columnName, controller) {
-                  newData[columnName] = controller.text; // Получение данных из текстовых полей
-                });
 
                 // Выполните запрос на добавление данных
                 try {
                   Map<String, String> substitutionValues = {};
                   textControllers.forEach((key, value) {
+                    currentTable == 'staff' && key == 'password'? {substitutionValues[key] =  hashPassword(value.text)} :
                     substitutionValues[key] = value.text;
                   });
 
@@ -522,7 +583,7 @@ class _MyHomePageState extends State<MyHomePage> {
     );
   }
 
-
+// Моя хранимая процедура
   void _showCreateBookingInteractionDialog(BuildContext context) {
     // Контроллеры для текстовых полей
     final inLfpCustomerController = TextEditingController();
@@ -758,129 +819,96 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
 
+  // Твой динамичный диалог
+  void _showCreatePurchaseDialog(BuildContext context) {
+    final field1Controller = TextEditingController();
+    final field2Controller = TextEditingController();
+    final field3Controller = TextEditingController();
+    final field4Controller = TextEditingController();
 
-// void _showReportDialog(BuildContext context, int reportIndex) async {
-  //   // Создание контроллеров для текстовых полей
-  //   final idBookingController = TextEditingController();
-  //   final yearController = TextEditingController();
-  //   final monthController = TextEditingController();
-  //
-  //   // Создание списка виджетов для текстовых полей
-  //   List<Widget> inputFields = [];
-  //
-  //   // Определите поля ввода на основе индекса отчета
-  //   if (reportIndex == 0 || reportIndex == 1) {
-  //     inputFields.add(TextField(
-  //       controller: idBookingController,
-  //       decoration: InputDecoration(labelText: 'ID Booking'),
-  //       keyboardType: TextInputType.number,
-  //     ));
-  //   } else if (reportIndex == 2) {
-  //     inputFields.add(TextField(
-  //       controller: yearController,
-  //       decoration: InputDecoration(labelText: 'Year'),
-  //       keyboardType: TextInputType.number,
-  //     ));
-  //     inputFields.add(TextField(
-  //       controller: monthController,
-  //       decoration: InputDecoration(labelText: 'Month'),
-  //       keyboardType: TextInputType.number,
-  //     ));
-  //   }
-  //
-  //   // Показать диалоговое окно
-  //   showDialog(
-  //     context: context,
-  //     builder: (BuildContext context) {
-  //       return AlertDialog(
-  //         title: Text("Введите данные для ${report[reportIndex]}"),
-  //         content: SingleChildScrollView(
-  //           child: ListBody(children: inputFields),
-  //         ),
-  //         actions: <Widget>[
-  //           ElevatedButton(
-  //             child: Text('Отмена'),
-  //             onPressed: () => Navigator.of(context).pop(),
-  //           ),
-  //           ElevatedButton(
-  //             child: Text('Показать'),
-  //             onPressed: () async {
-  //               // Здесь нужно подготовить и выполнить SQL запрос
-  //               String sqlQuery = '';
-  //               switch (reportIndex) {
-  //                 case 0:
-  //                 // Запрос для первого отчета
-  //                   sqlQuery = "SELECT DISTINCT b.id_booking, b.date_application_booking, b.date_car_accept_booking, b.date_start_repair_booking, s.name_service, s.price_service, p.name_spare_part, p.price_spare_part FROM booking b "
-  //                       "INNER JOIN render r ON b.id_booking = r.id_booking "
-  //                       "INNER JOIN service s ON s.id_service = r.id_service "
-  //                       "INNER JOIN spare_part p ON p.id_booking = b.id_booking "
-  //                       "INNER JOIN customer c ON c.id_customer = b.id_customer "
-  //                       "WHERE b.id_booking = ${idBookingController.text};";
-  //                   break;
-  //                 case 1:
-  //                 // Запрос для второго отчета
-  //                   sqlQuery = "SELECT DISTINCT p.name_spare_part, p.price_spare_part "
-  //                       "FROM spare_part p "
-  //                       "WHERE p.id_booking = ${idBookingController.text};";
-  //                   break;
-  //                 case 2:
-  //                 // Запрос для третьего отчета
-  //                   sqlQuery = "SELECT * FROM booking b "
-  //                       "WHERE EXTRACT(YEAR FROM b.date_application_booking) = ${yearController.text} "
-  //                       "AND EXTRACT(MONTH FROM b.date_application_booking) = ${monthController.text};";
-  //                   break;
-  //               }
-  //
-  //               try {
-  //                 // Выполнение запроса
-  //                 var results = await connection!.query(sqlQuery);
-  //                 var columnNames = results.columnDescriptions
-  //                     .map((col) => col.columnName)
-  //                     .toList();
-  //
-  //                 // Закрытие текущего диалогового окна
-  //                 Navigator.of(context).pop();
-  //
-  //                 // Отображение результатов в новом диалоговом окне с DataTable
-  //                 showDialog(
-  //                   context: context,
-  //                   builder: (BuildContext context) {
-  //                     // Подготовка данных для DataTable
-  //                     List<DataColumn> columns = columnNames
-  //                         .map((name) => DataColumn(label: Text(name)))
-  //                         .toList();
-  //                     List<DataRow> rows = results.map((row) {
-  //                       return DataRow(
-  //                         cells: row.map((cell) => DataCell(Text(cell.toString()))).toList(),
-  //                       );
-  //                     }).toList();
-  //
-  //                     return AlertDialog(
-  //                       title: Text('Результаты для ${report[reportIndex]}'),
-  //                       content: SingleChildScrollView(
-  //                         scrollDirection: Axis.horizontal,
-  //                         child: DataTable(columns: columns, rows: rows),
-  //                       ),
-  //                       actions: <Widget>[
-  //                         ElevatedButton(
-  //                           child: Text('Закрыть'),
-  //                           onPressed: () => Navigator.of(context).pop(),
-  //                         ),
-  //                       ],
-  //                     );
-  //                   },
-  //                 );
-  //               } catch (e) {
-  //                 print("Ошибка выполнения запроса: $e");
-  //               }
-  //             },
-  //           ),
-  //         ],
-  //       );
-  //     },
-  //   );
-  // }
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        bool isCreatingPurchase = true;
 
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              title: Text("Создать покупку"),
+              content: SingleChildScrollView(
+                child: ListBody(
+                  children: [
+                    TextField(
+                      controller: field1Controller,
+                      decoration: InputDecoration(labelText: 'Номер телефона покупателя'),
+                    ),
+                    TextField(
+                      controller: field2Controller,
+                      decoration: InputDecoration(labelText: 'Способ оплаты'),
+                    ),
+                    TextField(
+                      controller: field3Controller,
+                      decoration: InputDecoration(labelText: 'Артикул товара'),
+                    ),
+                    TextField(
+                      controller: field4Controller,
+                      decoration: InputDecoration(labelText: 'Кол-во купленного товара'),
+                    ),
+                  ],
+                ),
+              ),
+              actions: <Widget>[
+                if (isCreatingPurchase) ...[
+                  ElevatedButton(
+                    child: Text("Создать покупку"),
+                    onPressed: () {
+                      setState(() {
+                        field3Controller.clear();
+                        field4Controller.clear();
+                        isCreatingPurchase = false;
+                      });
+                    },
+                  ),
+                  ElevatedButton(
+                    child: Text("Отмена"),
+                    onPressed: () => Navigator.of(context).pop(),
+                  ),
+                ]
+                else ...[
+                  ElevatedButton(
+                    child: Text("Добавить к покупке"),
+                    onPressed: () {
+                      setState(() {
+                        field3Controller.clear();
+                        field4Controller.clear();
+                      });
+                    },
+                  ),
+                  ElevatedButton(
+                    child: Text("Завершить покупку"),
+                    onPressed: () {
+                      field3Controller.text.isEmpty || field4Controller.text.isEmpty
+                          ? {
+                        // Просто закроем потому что данные введены
+                        Navigator.of(context).pop(),
+                      }
+                          : {
+                        // Вставить твою функцию для оформления товара
+                        print(' Не Пусто подставим значения в функцию ${field3Controller.text} ${field4Controller.text}'),
+                      field3Controller.clear(),
+                      field4Controller.clear(),
+                      Navigator.of(context).pop(),
+                      };
+                    },
+                  ),
+                ],
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
 
 }
 
