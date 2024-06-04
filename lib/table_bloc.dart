@@ -45,12 +45,12 @@ class TableBloc extends Bloc<TableEvent, TableState> {
     if (databaseConnection.isClosed) {
       await databaseConnection.open();
     }
-
     try {
       var result = await databaseConnection.query('SELECT * FROM $tableName');
       tableName == 'interaction' ? result = await databaseConnection.query('SELECT interaction.*, staff.lfp_staff AS staff, service.name_service AS service FROM interaction LEFT JOIN staff ON interaction.id_staff = staff.id_staff LEFT JOIN service ON interaction.id_service = service.id_service;')
           : tableName == 'car' ? result = await databaseConnection.query('SELECT car.*, brand_car.name_brand_car, brand_car.name_model_brand_car FROM car INNER JOIN brand_car ON car.id_model_brand_car = brand_car.id_model_brand_car;')
           : tableName == 'booking' ? result = await databaseConnection.query('SELECT booking.*, customer.lfp_customer FROM booking INNER JOIN customer ON booking.id_customer = customer.id_customer;')
+          : tableName == 'render' ? result = await databaseConnection.query('SELECT render.*, service.name_service FROM render INNER JOIN service ON service.id_service = render.id_service;')
           : null;
       print('$tableName');
       List<Map<String, dynamic>> rows = [];
